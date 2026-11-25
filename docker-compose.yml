@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  # Instant-response OpenAI-compatible backend for benchmarking.
+  # Start with: LLM_BASE_URL=http://mock-llm:9000/v1 docker compose --profile bench up --build
+  mock-llm:
+    build: .
+    profiles: ["bench"]
+    command: ["uvicorn", "bench.mock_llm:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "9000:9000"
