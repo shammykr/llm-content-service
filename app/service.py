@@ -1,7 +1,9 @@
 import json
 import re
 
+from .batching import TokenBatcher
 from .cache import ResponseCache
+from .config import Settings
 from .llm import LLMClient
 from .prompts import recommend_prompt, summarize_prompt, translate_prompt
 
@@ -13,9 +15,15 @@ class LLMResponseError(Exception):
 class ContentService:
     """Cache-first content tasks. Each method returns (result, cached, cache_lookup_ms)."""
 
-    def __init__(self, llm: LLMClient, cache: ResponseCache):
+    def __init__(self, llm: LLMClient, cache: ResponseCache, settings: Settings):
         self.llm = llm
         self.cache = cache
+        self._small_tokens = settings.small_request_tokens
+        self.batchers = {
+            task: TokenBatcher(llm, task, settings.batch_window_ms,
+                               settings.batch_max_items, settings.batch_max_tokens)
+            for task in ("summarize", "translate")
+        }
 
     async def _cached(self, task: str, payload: dict, compute):
         key = self.cache.key(task, payload)
@@ -27,6 +35,9 @@ class ContentService:
         return value, False, lookup_ms
 
     async def _run_text(self, task: str, user_content: str) -> str:
+        tokens = estimate_tokens(user_content)
+        if tokens <= self._small_tokens:
+            return await self.batchers[task].submit(user_content, tokens)
         return await self.llm.complete(task, user_content)
 
     async def summarize(self, text: str, max_sentences: int):
@@ -47,6 +58,11 @@ class ContentService:
             return _parse_recommendations(raw, {c["id"] for c in candidates}, top_k)
 
         return await self._cached("recommend", payload, compute)
+
+
+def estimate_tokens(text: str) -> int:
+    # ~4 characters per token for English; good enough for batching decisions.
+    return max(1, len(text) // 4)
 
 
 def _parse_recommendations(raw: str, valid_ids: set[str], top_k: int) -> list[dict]:

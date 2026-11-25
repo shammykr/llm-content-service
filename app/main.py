@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     llm = LLMClient(settings)
     cache = ResponseCache(redis, settings.cache_ttl_seconds, settings.llm_model)
     app.state.redis = redis
-    app.state.service = ContentService(llm, cache)
+    app.state.service = ContentService(llm, cache, settings)
     yield
     await llm.close()
     await redis.aclose()
@@ -35,6 +35,11 @@ def _cache_headers(response: Response, cached: bool, lookup_ms: float) -> None:
 async def health():
     await app.state.redis.ping()
     return {"status": "ok"}
+
+
+@app.get("/stats")
+async def stats():
+    return {task: b.stats for task, b in app.state.service.batchers.items()}
 
 
 @app.post("/summarize", response_model=TextResult)
