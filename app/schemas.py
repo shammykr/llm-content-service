@@ -36,3 +36,36 @@ class TextResult(BaseModel):
 class RecommendResult(BaseModel):
     recommendations: list[Recommendation]
     cached: bool
+
+
+class IngestDocument(BaseModel):
+    id: str | None = Field(default=None, max_length=128)
+    text: str = Field(min_length=1)
+
+
+class IngestRequest(BaseModel):
+    documents: list[IngestDocument] = Field(min_length=1, max_length=1000)
+
+
+class IngestAck(BaseModel):
+    id: str
+    status: str
+    language: str
+    token_count: int
+    sentence_count: int
+
+
+class IngestResponse(BaseModel):
+    queued: int
+    documents: list[IngestAck]
+
+
+class StreamIngestResponse(BaseModel):
+    queued: int
+    rejected: list[dict]
+    documents: list[IngestAck]
+
+
+class IngestStatus(IngestAck):
+    summary: str | None = None
+    error: str | None = None
